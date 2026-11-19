@@ -1,0 +1,265 @@
+// =============================================================================
+// 
+// 2024年度 CP11 授業用fps60サンプル [main.cpp]
+// Author:	Date:
+// =============================================================================
+#include "conioex.h"
+#include <iostream>
+#include "scene.h"
+#include "inputkey.h"
+#include "color.h"
+#include "animation.h"
+#include "sound.h"
+
+// *****************************************************************************
+// マクロ定義
+// *****************************************************************************
+#define DEBUG_TIMER (500)	// デバッグ表示の間隔 500ms
+#define WINDOWPOS_X (275)	// ウィンドウの初期位置
+#define WINDOWPOS_Y (100)	// ウィンドウの初期位置
+
+// *****************************************************************************
+// プロトタイプ宣言
+// *****************************************************************************
+void Initialize(void);	//初期化
+void Update(void);		//更新
+void Draw(void);		//描画
+void UnInit(void);		//終了処理
+
+
+void WindowConsoleInitialize(void);		// ウィンドウ情報の初期化
+#ifdef _DEBUG
+void DispFPS(void);	// デバッグ時のみ有効な関数
+#endif
+
+#if defined(_WIN64) || defined(_M_X64)
+#ifndef _DEBUG
+#define show 0
+#pragma comment(lib, "./Library/HEW_x64_Release.lib")
+#else
+#define show 1
+#pragma comment(lib, "./Library/HEW_x64_Debug.lib")
+#endif
+
+#elif defined(_WIN32) || defined(_M_IX86)
+#ifndef _DEBUG
+#define show 0
+#pragma comment(lib, "./Library/HEW_x86_Release.lib")
+#else
+#define show 1
+#pragma comment(lib, "./Library/HEW_x86_Debug.lib")
+#endif
+#endif
+
+//Function prototype declarations
+bool HEWStartup();
+bool HEWCleanup();
+
+// *****************************************************************************
+// グローバル変数
+// *****************************************************************************
+int g_fpsCounter;				// FPSカウンタ
+DWORD dwMode_dafault;
+
+// =============================================================================
+// メイン関数
+// =============================================================================
+int main(void)
+{
+	system("cls");
+	// Define variables
+	bool rtn = 0;
+	int ch = 0;
+
+	int execLastTime;	// ゲーム処理をした時間（タイマー値）
+	int fpsLastTime;	// デバッグ表示をした時間（タイマー値）
+	int currentTime;	// 現在の時間（タイマー値）
+	int frameCount;		// ゲームの処理をした回数
+
+	setcaption((char*)"ウィンドウタイトル");
+
+	// タイマー分解能を高精度に設定
+	// 1/1000秒ごとに1ずつ増えるタイマーを使える
+	timeBeginPeriod(1);
+
+	execLastTime =
+		fpsLastTime = timeGetTime();	// 現在のタイマー値取得
+
+	// 変数を0に初期化
+	currentTime =
+		frameCount = 0;
+
+	// ウィンドウ情報の初期化
+	WindowConsoleInitialize();
+
+	// カーソル表示ＯＦＦ
+	setcursortype(NOCURSOR);
+
+
+	// ==========================
+	// この辺で初期化処理を行う
+	// ==========================
+	rtn = HEWStartup();
+	if (rtn != 1) {
+		perror("HEWStartup error");
+		return 0;  // FALSE
+	}
+
+	InitSound();
+	Initialize();
+
+	srand(time(NULL));
+	const HANDLE hstdin = GetStdHandle(STD_INPUT_HANDLE);
+	GetConsoleMode(hstdin, &dwMode_dafault);
+	SetConsoleMode(hstdin, ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS);
+
+	// ここからゲームループ
+	do
+	{
+		currentTime = timeGetTime();	// 現在のタイマー値
+		if ((currentTime - fpsLastTime) >= DEBUG_TIMER)	// タイマーの差が500ms以上かどうか
+		{	// 処理回数と経過時間から1秒間に何回処理できるかを計算
+			g_fpsCounter = frameCount * 1000 / (currentTime - fpsLastTime);
+			fpsLastTime = currentTime;	// 現在のタイマー値を保存
+			frameCount = 0;				// 処理回数リセット
+		}
+
+		// 前回ゲーム処理時のタイマー値と現在のタイマー値の差が
+		// 1/60秒(17ms)以上になっていたら処理を実行
+		if ((currentTime - execLastTime) >= (1000 / 60))
+		{
+			execLastTime = currentTime;// 現在のタイマー値保存
+
+			// 更新処理
+			Update();
+			// 描画処理
+			Draw();
+			CheckScene();
+			frameCount++;// ゲーム処理回数アップ
+
+			// デバッグ時のみ表示
+#ifdef _DEBUG
+			//DispFPS();
+#endif
+		}
+	} while (!inport(PK_ESC)); // ESC押すまでループ
+
+
+	// ===============================
+	// この辺で後始末処理を行う
+	// ===============================
+	UnInit();
+	UnInitSound();
+	SetConsoleMode(hstdin,dwMode_dafault);
+
+	rtn = HEWCleanup();
+	if (rtn != 1) {
+		perror("HEWCleanup error");
+		return 0; // FALSE
+	}
+
+	// カーソル表示ＯＮ
+	setcursortype(NORMALCURSOR);
+
+	// タイマー分解能を戻す
+	timeEndPeriod(1);
+
+	return 0;
+}
+
+// =============================================================================
+// ウィンドウ設定の初期化（HEW用設定）
+// =============================================================================
+void WindowConsoleInitialize(void)
+{
+	// Set console window position
+	HWND consoleWindow = GetConsoleWindow();
+	int x, y;
+	x = WINDOWPOS_X;
+	y = WINDOWPOS_Y;
+	SetWindowPos(consoleWindow, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+
+	// Set console window size
+	SMALL_RECT windowSize = { 0, 0, 80, 25 };
+	SetConsoleWindowInfo(GetStdHandle(STD_OUTPUT_HANDLE), TRUE, &windowSize);
+
+	// Set console buffer size
+	// ウィンドウサイズは80, 25で固定すること
+	COORD coord;
+	coord.X = 80;
+	coord.Y = 25;
+	SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+
+	// Set console font style and size
+	CONSOLE_FONT_INFOEX cfi;
+	cfi.cbSize = sizeof(cfi);
+	cfi.nFont = 0;
+	// ↓フォントサイズのみ変更可↓
+	cfi.dwFontSize.X = 12;						// Width of each character in the font
+	cfi.dwFontSize.Y = 24;						// Height
+	// ↑フォントサイズのみ変更可↑
+	cfi.FontFamily = FF_DONTCARE;
+	cfi.FontWeight = FW_NORMAL;
+	wcscpy_s(cfi.FaceName, L"MS Gothic");       // Choose your font
+	SetCurrentConsoleFontEx(GetStdHandle(STD_OUTPUT_HANDLE), FALSE, &cfi);
+}
+
+#ifdef _DEBUG
+// =============================================================================
+// デバッグ表示
+// =============================================================================
+void DispFPS(void)
+{
+	// 色設定
+	textcolor(LIGHTCYAN);
+
+	gotoxy(1, 1);	// 表示位置設定
+	std::cout << "FPS:" << g_fpsCounter;	// FPS値表示
+
+	// 色設定(もとに戻す)
+	//DefaultTextColor();
+}
+#endif
+
+//==============================================================================
+// 初期化
+//==============================================================================
+void Initialize(void)
+{
+	//シーンの初期化
+	InitScene();
+	InitKey();
+	ReadAnim();
+	SetConsoleOutputCP(65001);
+}
+//==============================================================================
+// 更新処理
+//==============================================================================
+void Update(void)	
+{
+	UpdataScene();
+	UpdateKey();
+#ifndef _DEBUG
+	//ログファイルの書き込み
+#endif // _DEBUG
+
+}
+//==============================================================================
+// 描画処理
+//==============================================================================
+void Draw(void)	
+{
+	DrawScene();
+#ifdef _DEBUG
+	//DrawKey();
+#endif // _DEBUG
+}
+//==============================================================================
+// 終了処理
+//==============================================================================
+void UnInit(void)	
+{
+	//シーンの終了
+	UnInitScene(); 
+	UninitKey();
+}

@@ -1,0 +1,24 @@
+# Visual Studio の設定とビルド出力
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+*.obj
+*.pdb
+*.tlog
+*.exe
+*.cso
+
+# ビルド済みライブラリ
+*.lib
+*.dll
+
+# この作品固有の依存物・素材・ローカルデータ
+/suisai-utopia/
+/Library/
+/conioex.h
+/*.mp3
+/*.csv
